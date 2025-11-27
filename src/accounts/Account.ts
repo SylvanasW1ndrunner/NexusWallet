@@ -1,335 +1,531 @@
-import { privateKeyToAccount } from 'viem/accounts'
-import type { Address } from 'viem'
-import type { PrivateKeyAccount } from 'viem'
-import { Safe4337Pack } from '@safe-global/relay-kit'
-import type { Safe4337CreateTransactionProps } from '@safe-global/relay-kit'
-
-// ==================== BaseAccount 基类 ====================
-export abstract class BaseAccount {
-    public address: Address
-    public derivationPath: string
-
-    constructor(address: Address, derivationPath: string) {
-        this.address = address
-        this.derivationPath = derivationPath
-    }
-
-    getAddress(): Address {
-        return this.address
-    }
-
-    getDerivationPath(): string {
-        return this.derivationPath
-    }
-
-    abstract getAccountType(): 'EOA' | 'AA'
-}
-
-// ==================== EOAAccount 类 ====================
-export class EOAAccount extends BaseAccount {
-    private prikey: `0x${string}`
-    public account: PrivateKeyAccount
-
-    constructor(privateKey: `0x${string}`, derivationPath: string) {
-        const account = privateKeyToAccount(privateKey)
-        super(account.address, derivationPath)
-
-        this.prikey = privateKey
-        this.account = account
-    }
-
-    getAccountType(): 'EOA' {
-        return 'EOA'
-    }
-
-    getPrivateKey(): `0x${string}` {
-        return this.prikey
-    }
-
-    getViemAccount(): PrivateKeyAccount {
-        return this.account
-    }
-}
-
-// ==================== AA Account 相关接口 ====================
+import {
+    createSmartAccountClient,
+    type SmartAccountClient,
+} from 'permissionless'
+import { toSafeSmartAccount } from 'permissionless/accounts'
+import { createBundlerClient,createPaymasterClient } from 'viem/account-abstraction'
+import {
+    createPublicClient,
+    http,
+    type Address,
+    type Chain,
+    type PublicClient,
+    type Transport,
+    type Hash
+} from 'viem'
+import type { PrivateKeyAccount } from 'viem/accounts'
+import type { EntryPoint } from 'permissionless/types/entrypoint'
+import { entryPoint06Address } from "viem/account-abstraction"
+import {ToSafeSmartAccountReturnType} from "permissionless/accounts/safe/toSafeSmartAccount.ts";
+// ==================== 类型定义 ====================
 
 /**
- * Safe 4337 配置接口
+ * Safe 配置 - 创建新 Safe
  */
-export interface Safe4337Config {
-    // Safe 账户基础配置
+export interface SafeCreateConfig {
+    owners: PrivateKeyAccount[]
+    threshold: number
+    bundlerUrl: string
+    rpcUrl: string
+    chainId: number
+    paymasterUrl?: string
+}
+
+/**
+ * Safe 配置 - 导入已存在的 Safe
+ */
+export interface SafeImportConfig {
+    safeAddress: Address
+    bundlerUrl: string
+    rpcUrl: string
+    chainId: number
+    paymasterUrl?: string
+}
+
+/**
+ * Safe 配置联合类型
+ */
+export type SafeConfig = SafeCreateConfig | SafeImportConfig
+
+/**
+ * Safe 账户完整配置（用于导出）
+ */
+export interface SafeAccountConfig {
+    safeAddress: Address
+    controllerAddress: Address
+    name?: string
     owners: Address[]
     threshold: number
-    saltNonce?: string
-
-    // 4337 相关配置
-    entryPoint?: Address
-    bundlerUrl: string
-
-    // Paymaster 配置（可选）
-    paymasterUrl?: string
-    paymasterAddress?: Address
-    isSponsored?: boolean,
-    paymasterTokenAddress?: Address
-    sponsorshipPolicyId?: `0x${string}`
-
-    // Safe 版本和链信息
-    safeVersion?: string
     chainId: number
-
-    // RPC 配置
-    rpcUrl: string
-}
-
-/**
- * AA 账户签名者信息
- * 这是从 HD 钱包派生出来的子账户信息
- */
-export interface AASignerInfo {
-    signerAddress: Address
-    signerPrivateKey: `0x${string}`
-    signerAccount: PrivateKeyAccount
-    derivationPath: string
-}
-
-/**
- * Safe 账户部署信息
- */
-export interface SafeDeploymentInfo {
     isDeployed: boolean
-    predictedAddress: Address
-    deploymentTxHash?: `0x${string}`
 }
 
 /**
- * Safe 账户初始化选项
+ * 交易调用
  */
-export interface SafeAccountInitOptions {
-    signerInfo: AASignerInfo
-    config: Safe4337Config
+export interface Call {
+    to: Address
+    value: bigint
+    data: `0x${string}`
+}
+
+// ==================== 辅助函数 ====================
+
+/**
+ * 根据 chainId 获取 Chain 对象
+ */
+function getChain(chainId: number, rpcUrl: string): Chain {
+    return {
+        id: chainId,
+        name: `Chain ${chainId}`,
+        nativeCurrency: {
+            name: 'Ether',
+            symbol: 'ETH',
+            decimals: 18
+        },
+        rpcUrls: {
+            default: { http: [rpcUrl] },
+            public: { http: [rpcUrl] }
+        }
+    } as Chain
 }
 
 // ==================== AAAccount 类 ====================
-export class AAAccount extends BaseAccount {
-    // 从 HD 钱包派生的签名者信息
-    private signerInfo: AASignerInfo
 
-    // Safe 4337 配置
-    public config: Safe4337Config
+/**
+ * AA 智能账户（Safe）
+ *
+ * 基于官方文档实现：
+ * https://docs.safe.global/advanced/erc-4337/guides/permissionless-quickstart
+ */
+export class AAAccount {
+    // ==================== 公开属性 ====================
 
-    // Safe 账户部署信息
-    public deploymentInfo: SafeDeploymentInfo
+    /**
+     * Safe 合约地址
+     */
+    safeAddress!: Address
 
-    // Safe4337Pack 实例
-    public safe4337Pack: Safe4337Pack
+    /**
+     * 控制者 EOA 账户
+     */
+    readonly controllerEOA: PrivateKeyAccount
 
-    // Safe 账户地址（Safe 智能合约地址）
-    public safeAddress: Address
+    /**
+     * 账户名称
+     */
+    name?: string
 
-    private constructor(
-        signerInfo: AASignerInfo,
-        config: Safe4337Config,
-        safe4337Pack: Safe4337Pack,
-        safeAddress: Address
+    // ==================== 私有属性 ====================
+
+    private safeAccount!: ToSafeSmartAccountReturnType
+    private smartAccountClient!: SmartAccountClient
+    private publicClient: PublicClient
+    private bundlerUrl: string
+    private rpcUrl: string
+    private chainId: number
+    private chain: Chain
+    private paymasterUrl?: string
+
+    // Safe 配置缓存
+    private _isDeployed?: boolean
+    private _owners?: Address[]
+    private _threshold?: number
+
+    // ==================== 构造函数 ====================
+
+    /**
+     * 创建 AA 账户
+     *
+     * @param controllerAccount - 控制者 EOA 账户
+     * @param config - Safe 配置
+     * @param name - 可选，账户名称
+     */
+    constructor(
+        controllerAccount: PrivateKeyAccount,
+        config: SafeConfig,
+        name?: string
     ) {
-        super(safeAddress, signerInfo.derivationPath)
+        this.controllerEOA = controllerAccount
+        this.name = name
+        this.bundlerUrl = config.bundlerUrl
+        this.rpcUrl = config.rpcUrl
+        this.chainId = config.chainId
+        this.paymasterUrl = config.paymasterUrl
 
-        this.signerInfo = signerInfo
-        this.config = config
-        this.safe4337Pack = safe4337Pack
-        this.safeAddress = safeAddress
+        // 创建 Chain 对象
+        this.chain = getChain(config.chainId, config.rpcUrl)
 
-        this.deploymentInfo = {
-            isDeployed: false,
-            predictedAddress: safeAddress
-        }
-    }
-
-    /**
-     * 创建 AA 账户的静态工厂方法
-     * 使用 async 初始化 Safe4337Pack
-     */
-    static async create(
-        signerInfo: AASignerInfo,
-        config: Safe4337Config
-    ): Promise<AAAccount> {
-        // 初始化 Safe4337Pack
-        const safe4337Pack = await Safe4337Pack.init({
-            // 签名者配置
-            provider: config.rpcUrl,
-            signer: signerInfo.signerPrivateKey,
-
-            // Bundler 配置
-            bundlerUrl: config.bundlerUrl,
-
-            // Safe 配置
-            options: {
-                owners: config.owners,
-                threshold: config.threshold,
-                saltNonce: config.saltNonce,
-            },
-
-            // Paymaster 配置（可选）
-            paymasterOptions: config.paymasterUrl ? {
-                paymasterUrl: config.paymasterUrl,
-                paymasterAddress: config.paymasterAddress,
-                isSponsored: config.isSponsored,
-                paymasterTokenAddress: config.paymasterTokenAddress,
-                sponsorshipPolicyId: config.sponsorshipPolicyId
-            } : undefined,
+        // 创建 Public Client
+        this.publicClient = createPublicClient({
+            chain: this.chain,
+            transport: http(config.rpcUrl)
         })
-        const safeAddress = await safe4337Pack.protocolKit.getAddress() as Address
-        return new AAAccount(
-            signerInfo,
-            config,
-            safe4337Pack,
-            safeAddress
-        )
-    }
-
-
-    getAccountType(): 'AA' {
-        return 'AA'
     }
 
     /**
-     * 获取签名者地址
+     * 初始化 Safe 账户
+     * 必须在创建后调用一次
      */
-    getSignerAddress(): Address {
-        return this.signerInfo.signerAddress
+    async initialize(config: SafeConfig): Promise<void> {
+        // 步骤 1: 创建 Safe Account
+        this._owners = config.owners
+        this._threshold = config.threshold
+        if ('safeAddress' in config && config.safeAddress) {
+            // 导入已存在的 Safe
+            this.safeAccount = await toSafeSmartAccount({
+                client: this.publicClient,
+                owners: [this.controllerEOA],
+                version: "1.4.1",
+                entryPoint: {
+                    address: entryPoint06Address,
+                    version: "0.6"
+                },
+                address: config.safeAddress,
+            })
+            this.safeAddress = config.safeAddress
+        } else {
+            // 创建新 Safe
+            const createConfig = config as SafeCreateConfig
+
+            this.safeAccount = await toSafeSmartAccount({
+                client: this.publicClient,
+                owners: createConfig.owners,
+                version: '1.4.1',
+                entryPoint: {
+                    version: '0.6',
+                    address: entryPoint06Address
+                },
+                saltNonce: 0n,
+                threshold: BigInt(createConfig.threshold),
+            })
+            this.safeAddress = this.safeAccount.address
+        }
+
+        // 步骤 2: 创建 Bundler Client
+        const bundlerClient = createBundlerClient({
+            client:this.safeAccount,
+            transport: http(this.bundlerUrl),
+        })
+
+        // 步骤 3: 创建 Paymaster Client（如果提供）
+        const paymasterClient = this.paymasterUrl
+            ? createPaymasterClient({
+                transport: http(this.paymasterUrl)
+            })
+            : undefined
+
+        // 步骤 4: 创建 Smart Account Client
+        this.smartAccountClient = createSmartAccountClient({
+            account: this.safeAccount,
+            chain: this.chain,
+            bundlerTransport: http(this.bundlerUrl),
+            paymaster: paymasterClient,
+            userOperation: {
+                estimateFeesPerGas: async () => {
+                    return bundlerClient.estimateUserOperationGas // only when using pimlico bundler
+                },
+            }
+        })
+
+        // 步骤 5: 检查 Safe 是否已部署并缓存配置
+        await this.refreshConfig()
     }
 
-    /**
-     * 获取签名者私钥（谨慎使用）
-     */
-    getSignerPrivateKey(): `0x${string}` {
-        return this.signerInfo.signerPrivateKey
-    }
+    // ==================== 配置刷新 ====================
 
     /**
-     * 获取签名者 viem account
+     * 刷新 Safe 配置（从链上读取）
      */
-    getSignerAccount(): PrivateKeyAccount {
-        return this.signerInfo.signerAccount
-    }
+    async refreshConfig(): Promise<void> {
+        // 检查是否已部署
+        const code = await this.publicClient.getBytecode({
+            address: this.safeAddress
+        })
+        this._isDeployed = code !== undefined && code !== '0x'
 
-    /**
-     * 获取签名者信息
-     */
-    getSignerInfo(): Readonly<AASignerInfo> {
-        return { ...this.signerInfo }
-    }
+        // 如果已部署，读取 owners 和 threshold
+        if (this._isDeployed) {
+            try {
+                // 读取 owners
+                this._owners = await this.publicClient.readContract({
+                    address: this.safeAddress,
+                    abi: [
+                        {
+                            inputs: [],
+                            name: 'getOwners',
+                            outputs: [{ type: 'address[]' }],
+                            stateMutability: 'view',
+                            type: 'function'
+                        }
+                    ],
+                    functionName: 'getOwners'
+                }) as Address[]
 
-    /**
-     * 检查地址是否是 owner
-     */
-    isOwner(address: Address): boolean {
-        return this.config.owners.some(
-            owner => owner.toLowerCase() === address.toLowerCase()
-        )
-    }
-
-    /**
-     * 获取 EntryPoint 地址
-     */
-    getEntryPoint(): Address {
-        return this.config.entryPoint
-    }
-
-    /**
-     * 获取 Bundler URL
-     */
-    getBundlerUrl(): string {
-        return this.config.bundlerUrl
-    }
-
-    /**
-     * 获取 Safe 地址
-     */
-    getSafeAddress(): Address {
-        return this.safeAddress
-    }
-
-    /**
-     * 更新部署状态
-     */
-    updateDeploymentStatus(isDeployed: boolean, txHash?: `0x${string}`): void {
-        this.deploymentInfo.isDeployed = isDeployed
-        if (txHash) {
-            this.deploymentInfo.deploymentTxHash = txHash
+                // 读取 threshold
+                this._threshold = Number(await this.publicClient.readContract({
+                    address: this.safeAddress,
+                    abi: [
+                        {
+                            inputs: [],
+                            name: 'getThreshold',
+                            outputs: [{ type: 'uint256' }],
+                            stateMutability: 'view',
+                            type: 'function'
+                        }
+                    ],
+                    functionName: 'getThreshold'
+                }))
+            } catch (error) {
+                console.warn('无法读取 Safe 配置:', error)
+            }
         }
     }
+
+    // ==================== Safe 信息查询 ====================
 
     /**
      * 检查 Safe 是否已部署
      */
     isDeployed(): boolean {
-        return this.deploymentInfo.isDeployed
+        return this._isDeployed ?? false
     }
 
     /**
-     * 创建用户操作交易
+     * 获取 Safe 的所有 owner 地址
      */
-    async createTransaction(
-        transactions: Safe4337CreateTransactionProps['transactions']
-    ) {
-        return await this.safe4337Pack.createTransaction({
-            transactions
-        })
+    async getOwners(): Promise<Address[]> {
+        if (!this._isDeployed) {
+            return this._owners!
+        }
+        await this.refreshConfig()
+
+        return this._owners!
     }
 
     /**
-     * 签名用户操作
+     * 获取 Safe 的签名阈值
      */
-    async signUserOperation(safeOperation: any) {
-        return await this.safe4337Pack.signSafeOperation(safeOperation)
+    async getThreshold(): Promise<number> {
+        if (!this._isDeployed) {
+            return this._threshold!
+        }
+
+        await this.refreshConfig()
+
+        return this._threshold!
     }
 
     /**
-     * 执行用户操作（通过 Bundler）
+     * 检查地址是否是 Safe 的 owner
      */
-    async executeUserOperation(signedSafeOperation: any) {
-        const userOperationHash = await this.safe4337Pack.executeTransaction({
-            executable: signedSafeOperation
-        })
-        return userOperationHash
+    async isOwner(address: Address): Promise<boolean> {
+        const owners = await this.getOwners()
+        return owners.some(
+            owner => owner.toLowerCase() === address.toLowerCase()
+        )
     }
 
     /**
-     * 获取用户操作收据
+     * 获取 Safe 的 nonce
      */
-    async getUserOperationReceipt(userOperationHash: string) {
-        // 需要使用 bundler client
-        // 这里可以通过 safe4337Pack 内部的 bundler 获取
-        return await this.safe4337Pack.getUserOperationReceipt(userOperationHash)
+    async getNonce(): Promise<bigint> {
+        return await this.safeAccount.getNonce()
     }
 
     /**
-     * 获取 Safe 账户余额
+     * 获取 Safe 的余额
      */
     async getBalance(): Promise<bigint> {
-        // 使用 viem 或者其他方式获取余额
-        // 需要传入 provider
-        return 0n // 占位符
+        return await this.publicClient.getBalance({
+            address: this.safeAddress
+        })
+    }
+
+    // ==================== 交易操作 ====================
+
+    /**
+     * 发送单个交易
+     *
+     * @example
+     * const txHash = await safe.sendTransaction({
+     *     to: '0x...',
+     *     value: parseEther('0.1'),
+     *     data: '0x'
+     * })
+     */
+    async sendTransaction(call: Call): Promise<Hash> {
+        return await this.sendTransactions([call])
     }
 
     /**
-     * 导出账户配置（不含私钥）
+     * 批量发送交易
+     *
+     * @example
+     * const txHash = await safe.sendTransactions([
+     *     { to: '0x...', value: parseEther('0.1'), data: '0x' },
+     *     { to: '0x...', value: 0n, data: '0x...' }
+     * ])
      */
-    exportConfig() {
-        return {
-            address: this.address,
-            safeAddress: this.safeAddress,
-            signerAddress: this.signerInfo.signerAddress,
-            derivationPath: this.derivationPath,
-            owners: this.config.owners,
-            threshold: this.config.threshold,
-            entryPoint: this.config.entryPoint,
-            bundlerUrl: this.config.bundlerUrl,
-            chainId: this.config.chainId,
-            isDeployed: this.deploymentInfo.isDeployed,
-            predictedAddress: this.deploymentInfo.predictedAddress,
-            deploymentTxHash: this.deploymentInfo.deploymentTxHash
+    async sendTransactions(calls: Call[]): Promise<Hash> {
+        const userOpHash = await this.smartAccountClient.sendUserOperation({
+            userOperation: {
+                callData: await this.safeAccount.encodeCallData(calls)
+            }
+        })
+
+        console.log(`UserOperation 已提交: ${userOpHash}`)
+        console.log(`查看详情: https://jiffyscan.xyz/userOpHash/${userOpHash}?network=sepolia`)
+
+        // 等待交易确认
+        const receipt = await this.smartAccountClient.waitForUserOperationReceipt({
+            hash: userOpHash
+        })
+
+        console.log(`交易已确认: ${receipt.receipt.transactionHash}`)
+
+        return receipt.receipt.transactionHash
+    }
+
+    /**
+     * 发送 ETH
+     *
+     * @example
+     * const txHash = await safe.sendETH(
+     *     '0x...',
+     *     parseEther('0.1')
+     * )
+     */
+    async sendETH(to: Address, value: bigint): Promise<Hash> {
+        return await this.sendTransaction({
+            to,
+            value,
+            data: '0x'
+        })
+    }
+
+    /**
+     * 调用合约（写操作）
+     *
+     * @example
+     * const txHash = await safe.writeContract({
+     *     to: erc20Address,
+     *     data: encodeFunctionData({
+     *         abi: erc20Abi,
+     *         functionName: 'transfer',
+     *         args: [recipient, amount]
+     *     })
+     * })
+     */
+    async writeContract(params: {
+        to: Address
+        data: `0x${string}`
+        value?: bigint
+    }): Promise<Hash> {
+        return await this.sendTransaction({
+            to: params.to,
+            value: params.value ?? 0n,
+            data: params.data
+        })
+    }
+
+    // ==================== 高级操作 ====================
+
+    /**
+     * 部署 Safe（如果尚未部署）
+     *
+     * 注意：首次发送交易时会自动部署
+     */
+    async deploy(): Promise<void> {
+        if (this.isDeployed()) {
+            console.log('Safe 已部署')
+            return
         }
+
+        console.log('正在部署 Safe...')
+
+        // 发送一个空交易来触发部署
+        await this.sendTransaction({
+            to: this.safeAddress,
+            value: 0n,
+            data: '0x'
+        })
+
+        // 刷新配置
+        await this.refreshConfig()
+
+        console.log('✅ Safe 已部署')
+    }
+
+    /**
+     * 估算 UserOperation 的 Gas
+     */
+    async estimateGas(calls: Call[]): Promise<{
+        preVerificationGas: bigint
+        verificationGasLimit: bigint
+        callGasLimit: bigint
+    }> {
+        const userOp = await this.smartAccountClient.prepareUserOperationRequest({
+            userOperation: {
+                callData: await this.safeAccount.encodeCallData(calls)
+            }
+        })
+
+        return {
+            preVerificationGas: userOp.preVerificationGas,
+            verificationGasLimit: userOp.verificationGasLimit,
+            callGasLimit: userOp.callGasLimit
+        }
+    }
+
+    // ==================== 配置导出 ====================
+
+    /**
+     * 导出账户配置
+     */
+    async exportConfig(): Promise<SafeAccountConfig> {
+        let owners: Address[] = []
+        let threshold: number = 0
+
+        if (this.isDeployed()) {
+            owners = await this.getOwners()
+            threshold = await this.getThreshold()
+        }
+
+        return {
+            safeAddress: this.safeAddress,
+            controllerAddress: this.controllerEOA.address,
+            name: this.name,
+            owners,
+            threshold,
+            chainId: this.chainId,
+            isDeployed: this.isDeployed()
+        }
+    }
+
+    // ==================== 获取底层客户端（高级用法） ====================
+
+    /**
+     * 获取 Smart Account Client
+     * 用于高级操作
+     */
+    getSmartAccountClient(): SmartAccountClient{
+        return this.smartAccountClient
+    }
+
+    /**
+     * 获取 Safe Account
+     * 用于高级操作
+     */
+    getSafeAccount(): ToSafeSmartAccountReturnType {
+        return this.safeAccount
+    }
+
+    /**
+     * 获取 Public Client
+     * 用于读取链上数据
+     */
+    getPublicClient(): PublicClient {
+        return this.publicClient
     }
 }
