@@ -2,12 +2,20 @@
 Wallet class for managing multiple smart contract accounts across chains.
 Integrates with KeyManager for signing operations.
 """
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, Sequence
+
+import web3
+from hexbytes import HexBytes
+from web3 import Web3
+from web3.types import TxReceipt
+
 from .account import Account
-from .config import Config
-from .keymanager.keyManager import KeyManager
+from backend.config.config import Config
+from backend.keymanager.keyManager import KeyManager
 import json
 import os
+
+from ..config.abi import factory_abi, account_abi
 
 
 class Wallet:
@@ -64,7 +72,7 @@ class Wallet:
 
         # Config singleton
         self._config = Config()
-
+        self.sync_account()
         # Validate KeyManager
         if not isinstance(key_manager, KeyManager):
             raise TypeError("key_manager must be a KeyManager instance")
@@ -80,11 +88,13 @@ class Wallet:
     def add_account(
         self,
         network_name: str,
-        contract_address: str,
-        owners: List[str],
-        threshold: int,
+        contract_address: Optional[str] = None,
+        owners: Optional[List[str]] = None,
+        threshold: int = 1,
+        name: Optional[str] = None,
         guardians: Optional[List[str]] = None,
         guardian_threshold: int = 0,
+        salt: int = 0,
         bundler_url: Optional[str] = None,
         paymaster_url: Optional[str] = None,
         rpc_url: Optional[str] = None,
@@ -93,13 +103,25 @@ class Wallet:
         """
         Add a smart contract account to the wallet.
 
+        This method supports two modes:
+        1. **Create new account** (contract_address=None):
+           - Calculates counterfactual address using factory contract
+           - Account is NOT yet deployed (is_deployed() returns False)
+           - First UserOperation will deploy the account
+
+        2. **Import existing account** (contract_address provided):
+           - Uses the provided address
+           - Account may or may not be deployed
+
         Args:
             network_name: Name of the network (must be in Config)
-            contract_address: Smart contract account address
-            owners: List of owner addresses
-            threshold: Multi-sig threshold
+            contract_address: Smart contract account address (if None, creates new account)
+            owners: List of owner addresses (if None, uses KeyManager address)
+            threshold: Multi-sig threshold (default: 1)
+            name: User-friendly name for the account (optional)
             guardians: Optional guardian addresses for social recovery
             guardian_threshold: Guardian threshold
+            salt: Salt value used for CREATE2 deployment (default: 0)
             bundler_url: Custom bundler endpoint
             paymaster_url: Custom paymaster endpoint
             rpc_url: Custom RPC URL (overrides Config)
@@ -110,6 +132,22 @@ class Wallet:
 
         Raises:
             ValueError: If network not configured or account already exists
+
+        Examples:
+            # Create new account (auto-calculate address)
+            account = wallet.add_account(
+                network_name='sepolia',
+                owners=['0xOwner1', '0xOwner2'],
+                threshold=2
+            )
+
+            # Import existing account
+            account = wallet.add_account(
+                network_name='sepolia',
+                contract_address='0x123...',
+                owners=['0xOwner1'],
+                threshold=1
+            )
         """
         # Validate network exists in Config
         if not rpc_url and not self._config.has_network(network_name):
@@ -117,6 +155,30 @@ class Wallet:
                 f"Network '{network_name}' not configured. "
                 f"Add it to Config or provide custom rpc_url"
             )
+
+        # If owners not provided, use KeyManager address
+        if owners is None:
+            if not self.key_manager.address:
+                raise ValueError(
+                    "No owners provided and KeyManager has no address. "
+                    "Unlock KeyManager or provide owners list."
+                )
+            owners = [self.key_manager.address]
+
+        # If contract_address not provided, calculate counterfactual address
+        if contract_address is None:
+            print(f"   Calculating counterfactual address for new account...")
+            contract_address = Account.calculate_address(
+                network_name=network_name,
+                owners=owners,
+                threshold=threshold,
+                guardians=guardians or [],
+                guardian_threshold=guardian_threshold,
+                salt=salt,
+                rpc_url=rpc_url
+            )
+            print(f"   ✓ Counterfactual address: {contract_address}")
+            print(f"   Note: Account is NOT yet deployed. First UserOperation will deploy it.")
 
         # Initialize network's account list if not exists
         if network_name not in self._accounts:
@@ -136,8 +198,10 @@ class Wallet:
             contract_address=contract_address,
             owners=owners,
             threshold=threshold,
+            name=name,
             guardians=guardians,
             guardian_threshold=guardian_threshold,
+            salt=salt,
             bundler_url=bundler_url,
             paymaster_url=paymaster_url,
             rpc_url=rpc_url
@@ -351,7 +415,7 @@ class Wallet:
         if not w3.is_connected():
             raise ConnectionError(f"Cannot connect to {network_name} RPC: {rpc_url}")
 
-        return w3.eth.get_transaction_count(self.key_manager.address)
+        return w3.eth.get_transaction_count(self.key_manager.address,'pending')
 
     def send_transaction(
         self,
@@ -364,7 +428,7 @@ class Wallet:
         max_fee_per_gas: Optional[int] = None,
         max_priority_fee_per_gas: Optional[int] = None,
         nonce: Optional[int] = None
-    ) -> str:
+    ) -> TxReceipt:
         """
         Send a transaction using EOA mode.
         This is the ONLY function for sending EOA transactions.
@@ -448,9 +512,12 @@ class Wallet:
         signed_tx = self.key_manager.sign_transaction(tx)
 
         # Send transaction
-        tx_hash = w3.eth.send_raw_transaction(signed_tx.rawTransaction)
-
-        return tx_hash.hex()
+        tx_hash = w3.eth.send_raw_transaction(signed_tx.raw_transaction)
+        try:
+            reciept = w3.eth.wait_for_transaction_receipt(tx_hash)
+        except Exception:
+            print("Exception raised while sending transaction:",Exception)
+        return reciept
 
     def send_message(self, message: str) -> bytes:
         """
@@ -635,14 +702,18 @@ class Wallet:
                 try:
                     account_info = {
                         'address': account.contract_address,
+                        'name': account.name,
                         'owners': len(account.owners),
                         'threshold': account.threshold,
+                        'guardians':account.guardians,
+                        'guardians_threshold': account.guardians_threshold,
                         'deployed': account.is_deployed() if account.w3.is_connected() else 'unknown',
                         'balance': account.get_balance() if account.w3.is_connected() else 0
                     }
                 except Exception as e:
                     account_info = {
                         'address': account.contract_address,
+                        'name': account.name if hasattr(account, 'name') else None,
                         'error': str(e)
                     }
                 aa_accounts_summary[network_name].append(account_info)
@@ -654,3 +725,43 @@ class Wallet:
             'eoa_balances': eoa_balances,  # EOA balances across all networks
             'aa_accounts': aa_accounts_summary  # List of accounts per network
         }
+    def get_config(self):
+        return self._config
+    def sync_account(self):
+        net_config = self.get_config()
+        all_networks = net_config.get_all_networks()
+        for key in all_networks.keys():
+            try:
+                rpc = self._config.get_rpc_url(key)
+                w3 =Web3(Web3.HTTPProvider(rpc))
+                contract_abi = factory_abi
+                factory_address = self._config.get_factory(key)
+                contract = w3.eth.contract(
+                    address=factory_address,
+                    abi=contract_abi
+                )
+                owned_accounts = contract.functions.getOwnedAccounts(
+                    self.get_eoa_address()
+                ).call()
+                acc_abi = account_abi
+                for account in owned_accounts:
+                    acc_addr = account['address']
+                    acc_contract = w3.eth.contract(
+                        address=acc_addr,
+                        abi=acc_abi
+                    )
+                    guardians = acc_contract.functions.getGuardians().call()
+                    owners = acc_contract.functions.getOwners().call()
+                    threshold = acc_contract.functions.threshold().call()
+                    guardians_threshold = acc_contract.functions.guardianThreshold().call()
+                    self.add_account(
+                        network_name=key,
+                        contract_address=acc_addr,
+                        owners=owners,
+                        threshold=threshold,
+                        guardians=guardians,
+                        guardian_threshold=guardians_threshold,
+                    )
+            except Exception as e:
+                print(f"Failed to sync account in {key}: {e}:")
+

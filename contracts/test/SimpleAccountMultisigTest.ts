@@ -258,7 +258,7 @@ describe('SimpleAccount MultiSig', function () {
       const removeOwnerData = account.interface.encodeFunctionData('removeOwner', [owner2.address])
 
       await expect(
-          account.connect(owner1).execute(accountAddress, 0, removeOwnerData)
+        account.connect(owner1).execute(accountAddress, 0, removeOwnerData)
       ).to.be.reverted
 
       console.log('\n正确阻止了破坏阈值的操作 ✓')
@@ -475,7 +475,7 @@ describe('SimpleAccount MultiSig', function () {
       await account.connect(guardian1).approveRecovery(newOwners, newThreshold)
 
       await expect(
-          account.connect(guardian1).executeRecovery(newOwners, newThreshold)
+        account.connect(guardian1).executeRecovery(newOwners, newThreshold)
       ).to.be.revertedWith('insufficient guardian approvals')
 
       console.log('\n正确阻止了批准数量不足的恢复 ✓')
@@ -488,7 +488,7 @@ describe('SimpleAccount MultiSig', function () {
       const newThreshold = 2
 
       await expect(
-          account.connect(beneficiary).approveRecovery(newOwners, newThreshold)
+        account.connect(beneficiary).approveRecovery(newOwners, newThreshold)
       ).to.be.revertedWith('not a guardian')
 
       console.log('\n正确阻止了非 Guardian 的批准 ✓')
@@ -527,7 +527,7 @@ describe('SimpleAccount MultiSig', function () {
       await account.connect(guardian1).approveRecovery(newOwners, newThreshold)
 
       await expect(
-          account.connect(guardian1).approveRecovery(newOwners, newThreshold)
+        account.connect(guardian1).approveRecovery(newOwners, newThreshold)
       ).to.be.revertedWith('already approved')
 
       console.log('\n正确阻止了重复批准 ✓')
@@ -612,7 +612,7 @@ describe('SimpleAccount MultiSig', function () {
       const newThreshold = 2
 
       await expect(
-          account.connect(guardian1).approveRecovery(newOwners, newThreshold)
+        account.connect(guardian1).approveRecovery(newOwners, newThreshold)
       ).to.be.revertedWith('social recovery not enabled')
 
       console.log('\n正确阻止了无 Guardian 账户的恢复 ✓')
@@ -671,7 +671,7 @@ describe('SimpleAccount MultiSig', function () {
       const salt = 2000
 
       await expect(
-          factory.createAccount(signers, threshold, guardians, guardianThreshold, salt)
+        factory.createAccount(signers, threshold, guardians, guardianThreshold, salt)
       ).to.be.reverted
 
       console.log('\n正确阻止了创建无 Owner 账户 ✓')
@@ -685,7 +685,7 @@ describe('SimpleAccount MultiSig', function () {
       const salt = 2001
 
       await expect(
-          factory.createAccount(signers, threshold, guardians, guardianThreshold, salt)
+        factory.createAccount(signers, threshold, guardians, guardianThreshold, salt)
       ).to.be.reverted
 
       console.log('\n正确阻止了阈值大于 Owner 数量 ✓')
@@ -699,7 +699,7 @@ describe('SimpleAccount MultiSig', function () {
       const salt = 2002
 
       await expect(
-          factory.createAccount(signers, threshold, guardians, guardianThreshold, salt)
+        factory.createAccount(signers, threshold, guardians, guardianThreshold, salt)
       ).to.be.reverted
 
       console.log('\n正确阻止了 Guardian 阈值大于数量 ✓')
@@ -713,7 +713,7 @@ describe('SimpleAccount MultiSig', function () {
       const salt = 2003
 
       await expect(
-          factory.createAccount(signers, threshold, guardians, guardianThreshold, salt)
+        factory.createAccount(signers, threshold, guardians, guardianThreshold, salt)
       ).to.be.reverted
 
       console.log('\n正确阻止了 Guardian 阈值为 0 ✓')

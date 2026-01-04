@@ -6,8 +6,8 @@ This script tests the integration between deployed contracts and the Python back
 import json
 import os
 from backend.keymanager.keyManager import KeyManager
-from backend.config import Config, NetworkConfig
-from backend.wallet import Wallet
+from backend.config.config import Config, NetworkConfig
+from backend.utils.wallet import Wallet
 from web3 import Web3
 
 
@@ -108,9 +108,9 @@ def main():
     print("\n6. Adding AA account to wallet...")
     test_account_info = deployment['testAccount']
 
-    account = wallet.add_account(
+    account = wallet.add_acccount(
         network_name='localhost',
-        contract_address=test_account_info['address'],
+        contract_address=test_acount_info['address'],
         owners=test_account_info['owners'],
         threshold=test_account_info['threshold'],
         guardians=test_account_info['guardians'],

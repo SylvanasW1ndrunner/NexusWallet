@@ -14,6 +14,7 @@ import "../core/BaseAccount.sol";
  * A minimal account to be used with EIP-7702 (for batching) and ERC-4337 (for gas sponsoring)
  */
 contract Simple7702Account is BaseAccount, IERC165, IERC1271, ERC1155Holder, ERC721Holder {
+    error NotFromEntryPoint(address sender, address account, address entryPoint);
 
     IEntryPoint private immutable _entryPoint;
 

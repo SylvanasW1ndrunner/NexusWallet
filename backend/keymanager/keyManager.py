@@ -147,3 +147,12 @@ class KeyManager:
 
     def get_address(self):
         return self.address
+
+    def get_private_key(self):
+        """
+        Get the private key bytes.
+        Only works when KeyManager is unlocked.
+        """
+        if not self.unlocked:
+            raise PermissionError("Wallet is locked.")
+        return self._private_key

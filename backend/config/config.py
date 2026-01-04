@@ -2,6 +2,7 @@
 Global configuration for multi-chain support.
 Manages RPC endpoints and network configurations.
 """
+from pathlib import Path
 from typing import Dict, Optional
 from dataclasses import dataclass, asdict
 import json
@@ -43,7 +44,8 @@ class Config:
     """
 
     _instance = None
-    DEFAULT_CONFIG_PATH = "config.json"
+    PROJECT_ROOT = Path(__file__).resolve().parents[2]
+    DEFAULT_CONFIG_PATH = PROJECT_ROOT / "backend" / "config.json"
 
     def __new__(cls, config_path: Optional[str] = None):
         if cls._instance is None:
@@ -124,7 +126,8 @@ class Config:
 
         if save:
             self.save_to_json()
-
+    def get_all_networks(self) -> Dict[str, NetworkConfig]:
+        return self._networks
     def set_factory(self, network_name: str, factory_address: str, save: bool = True):
         """
         Set Factory address for a network after deployment.

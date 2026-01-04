@@ -15,13 +15,13 @@ import "./SimpleAccount.sol";
  */
 contract SimpleAccountFactory {
     SimpleAccount public immutable accountImplementation;
-    ISenderCreator public immutable senderCreator;
+    //ISenderCreator public immutable senderCreator;
     mapping(address => address[]) public ownedAccounts;
 
 
     constructor(IEntryPoint _entryPoint) {
         accountImplementation = new SimpleAccount(_entryPoint);
-        senderCreator = _entryPoint.senderCreator();
+        //senderCreator = _entryPoint.senderCreator();
     }
 
     /**
@@ -31,15 +31,14 @@ contract SimpleAccountFactory {
      * This method returns an existing account address so that entryPoint.getSenderAddress() would work even after account creation
      */
     function createAccount(address[] memory ownerlist, uint256 threshold,address[] memory guardians,uint256 guardianThreshold, uint256 salt) public returns (SimpleAccount ret) {
-        //在测试阶段测试功能时注释下面这行require
-        require(msg.sender == address(senderCreator), "only callable from SenderCreator");
+        //require(msg.sender == address(senderCreator), "only callable from SenderCreator");
         address addr = getAddress(ownerlist,threshold ,guardians,guardianThreshold,salt);
         uint256 codeSize = addr.code.length;
         if (codeSize > 0) {
             return SimpleAccount(payable(addr));
         }
         for(uint256 i =0 ; i < ownerlist.length;i++){
-            ownerlist[i].push(addr);
+            ownedAccounts[ownerlist[i]].push(addr);
         }
         ret = SimpleAccount(payable(new ERC1967Proxy{salt : bytes32(salt)}(
             address(accountImplementation),
@@ -59,4 +58,13 @@ contract SimpleAccountFactory {
             )
         )));
     }
+
+    function getOwnedAccounts(address owner)
+    external
+    view
+    returns (address[] memory)
+    {
+        return ownedAccounts[owner];
+    }
+
 }

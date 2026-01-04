@@ -2,8 +2,10 @@ import '@nomiclabs/hardhat-waffle'
 import '@typechain/hardhat'
 import { HardhatUserConfig, task } from 'hardhat/config'
 import 'hardhat-deploy'
-
+import * as dotenv from 'dotenv'
 import * as fs from 'fs'
+import path from "node:path";
+dotenv.config({ path: path.resolve(__dirname, '../.env') })
 
 const SALT = '0x7702864008ddeab30aa67b7adc3d2653bc8d162714b1fe8fe4582df814f3bf61'
 process.env.SALT = process.env.SALT ?? SALT
@@ -11,20 +13,25 @@ process.env.SALT = process.env.SALT ?? SALT
 task('deploy', 'Deploy contracts')
   .addFlag('simpleAccountFactory', 'deploy sample factory (by default, enabled only on localhost)')
 
-const mnemonicFileName = process.env.MNEMONIC_FILE!
-let mnemonic = 'test '.repeat(11) + 'junk'
-if (fs.existsSync(mnemonicFileName)) { mnemonic = fs.readFileSync(mnemonicFileName, 'ascii') }
+// Get private key from .env
+// Use Hardhat test account as fallback for local development
+const PRIVATE_KEY = process.env.PRIVATE_KEY ||
+  'ac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80'
 
-function getNetwork1 (url: string): { url: string, accounts: { mnemonic: string } } {
+// Get accounts array (private key with 0x prefix)
+function getAccounts (): string[] {
+  return [PRIVATE_KEY.startsWith('0x') ? PRIVATE_KEY : `0x${PRIVATE_KEY}`]
+}
+
+function getNetwork1 (url: string): { url: string, accounts: string[] } {
   return {
     url,
-    accounts: { mnemonic }
+    accounts: getAccounts()
   }
 }
 
-function getNetwork (name: string): { url: string, accounts: { mnemonic: string } } {
+function getNetwork (name: string): { url: string, accounts: string[] } {
   return getNetwork1(`https://${name}.infura.io/v3/${process.env.INFURA_ID}`)
-  // return getNetwork1(`wss://${name}.infura.io/ws/v3/${process.env.INFURA_ID}`)
 }
 
 const optimizedCompilerSettings = {
@@ -49,6 +56,7 @@ const config: HardhatUserConfig = {
         optimizer: { enabled: true, runs: 1000000 }
       }
     }],
+
     overrides: {
       'contracts/core/EntryPoint.sol': optimizedCompilerSettings,
       'contracts/core/EntryPointSimulations.sol': optimizedCompilerSettings,

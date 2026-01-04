@@ -6,6 +6,13 @@
       "entrypoint_address": "0x5FbDB2315678afecb367f032d93F642f64180aa3",
       "factory_address": "0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512",
       "name": "localhost"
+    },
+    "sepolia": {
+      "chain_id": 11155111,
+      "rpc_url": "https://sepolia.infura.io/v3/3fda40bea029468aa7b592a7881a78bc",
+      "entrypoint_address": "0x0000000071727De22E5E9d8BAf0edAc6f37da032",
+      "factory_address": "0x9F61b4f03D9289E206abbb5af3454aCBd3D61EA6",
+      "name": "Sepolia Testnet"
     }
   }
 }
