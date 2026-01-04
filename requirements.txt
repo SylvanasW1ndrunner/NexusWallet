@@ -1,0 +1,30 @@
+# Web3 and Ethereum
+web3>=6.0.0
+eth-account>=0.9.0
+eth-utils>=2.0.0
+eth-abi>=4.0.0
+
+# HTTP requests
+requests>=2.31.0
+
+# Cryptography
+pycryptodome>=3.19.0
+
+# Environment variables
+python-dotenv>=1.0.0
+
+# Testing
+pytest>=7.4.0
+
+# Database (Transaction Aggregation Service)
+sqlalchemy>=2.0.0
+psycopg2-binary>=2.9.0
+
+# Caching (Transaction Aggregation Service)
+redis>=5.0.0
+
+# API Framework (Transaction Aggregation Service)
+fastapi>=0.104.0
+uvicorn>=0.24.0
+pydantic>=2.0.0
+

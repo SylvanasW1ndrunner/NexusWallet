@@ -1,0 +1,819 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nexus AA Service - API Tester</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 20px;
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            font-size: 1.1em;
+            opacity: 0.9;
+        }
+
+        .config-section {
+            padding: 20px 30px;
+            background: #f8f9fa;
+            border-bottom: 2px solid #e9ecef;
+        }
+
+        .config-row {
+            display: flex;
+            gap: 15px;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+
+        .config-row label {
+            font-weight: 600;
+            min-width: 120px;
+        }
+
+        .config-row input {
+            flex: 1;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-size: 14px;
+        }
+
+        .status-bar {
+            padding: 15px 30px;
+            background: #fff3cd;
+            border-bottom: 2px solid #ffc107;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .status-bar.connected {
+            background: #d4edda;
+            border-bottom-color: #28a745;
+        }
+
+        .status-bar.error {
+            background: #f8d7da;
+            border-bottom-color: #dc3545;
+        }
+
+        .main-content {
+            display: grid;
+            grid-template-columns: 350px 1fr;
+            min-height: 600px;
+        }
+
+        .sidebar {
+            background: #f8f9fa;
+            border-right: 2px solid #e9ecef;
+            overflow-y: auto;
+            max-height: calc(100vh - 300px);
+        }
+
+        .endpoint-group {
+            margin-bottom: 5px;
+        }
+
+        .endpoint-group-title {
+            padding: 15px 20px;
+            background: #e9ecef;
+            font-weight: 600;
+            color: #495057;
+            cursor: pointer;
+            user-select: none;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .endpoint-group-title:hover {
+            background: #dee2e6;
+        }
+
+        .endpoint-item {
+            padding: 12px 20px;
+            cursor: pointer;
+            border-left: 3px solid transparent;
+            transition: all 0.2s;
+        }
+
+        .endpoint-item:hover {
+            background: #e9ecef;
+            border-left-color: #667eea;
+        }
+
+        .endpoint-item.active {
+            background: #667eea;
+            color: white;
+            border-left-color: #764ba2;
+        }
+
+        .endpoint-method {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 600;
+            margin-right: 8px;
+        }
+
+        .method-get { background: #28a745; color: white; }
+        .method-post { background: #007bff; color: white; }
+        .method-delete { background: #dc3545; color: white; }
+
+        .content-area {
+            padding: 30px;
+            overflow-y: auto;
+            max-height: calc(100vh - 300px);
+        }
+
+        .endpoint-details h2 {
+            color: #333;
+            margin-bottom: 10px;
+        }
+
+        .endpoint-details p {
+            color: #666;
+            margin-bottom: 20px;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group label {
+            display: block;
+            font-weight: 600;
+            margin-bottom: 8px;
+            color: #333;
+        }
+
+        .form-group input,
+        .form-group textarea,
+        .form-group select {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-size: 14px;
+            font-family: 'Courier New', monospace;
+        }
+
+        .form-group textarea {
+            min-height: 100px;
+            resize: vertical;
+        }
+
+        .form-group small {
+            display: block;
+            margin-top: 5px;
+            color: #666;
+            font-size: 12px;
+        }
+
+        .btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn-secondary {
+            background: #6c757d;
+            color: white;
+        }
+
+        .btn-success {
+            background: #28a745;
+            color: white;
+        }
+
+        .response-section {
+            margin-top: 30px;
+        }
+
+        .response-section h3 {
+            margin-bottom: 15px;
+            color: #333;
+        }
+
+        .response-box {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 6px;
+            padding: 15px;
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+
+        .response-box.success {
+            background: #d4edda;
+            border-color: #c3e6cb;
+            color: #155724;
+        }
+
+        .response-box.error {
+            background: #f8d7da;
+            border-color: #f5c6cb;
+            color: #721c24;
+        }
+
+        .button-group {
+            display: flex;
+            gap: 10px;
+            margin-top: 20px;
+        }
+
+        .saved-data {
+            background: #e7f3ff;
+            border: 1px solid #b3d9ff;
+            border-radius: 6px;
+            padding: 15px;
+            margin-bottom: 20px;
+        }
+
+        .saved-data h4 {
+            margin-bottom: 10px;
+            color: #004085;
+        }
+
+        .saved-data-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 5px 0;
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+        }
+
+        .saved-data-label {
+            font-weight: 600;
+            color: #004085;
+        }
+
+        .saved-data-value {
+            color: #004085;
+            word-break: break-all;
+        }
+
+        .loading {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid rgba(255,255,255,.3);
+            border-radius: 50%;
+            border-top-color: white;
+            animation: spin 1s ease-in-out infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .hidden {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🚀 Nexus AA Service</h1>
+            <p>Interactive API Testing Interface</p>
+        </div>
+
+        <div class="config-section">
+            <div class="config-row">
+                <label>API Base URL:</label>
+                <input type="text" id="apiBaseUrl" value="http://localhost:8000">
+            </div>
+            <div class="config-row">
+                <label>Test Network:</label>
+                <input type="text" id="testNetwork" value="sepolia">
+            </div>
+        </div>
+
+        <div class="status-bar" id="statusBar">
+            <span id="statusText">Not connected</span>
+            <button class="btn btn-secondary" onclick="checkHealth()">Check Connection</button>
+        </div>
+
+        <div class="saved-data" id="savedData" style="margin: 20px 30px; display: none;">
+            <h4>📋 Saved Session Data</h4>
+            <div class="saved-data-item">
+                <span class="saved-data-label">Session Token:</span>
+                <span class="saved-data-value" id="savedSessionToken">-</span>
+            </div>
+            <div class="saved-data-item">
+                <span class="saved-data-label">EOA Address:</span>
+                <span class="saved-data-value" id="savedEoaAddress">-</span>
+            </div>
+            <div class="saved-data-item">
+                <span class="saved-data-label">Account Address:</span>
+                <span class="saved-data-value" id="savedAccountAddress">-</span>
+            </div>
+        </div>
+
+        <div class="main-content">
+            <div class="sidebar" id="sidebar">
+                <!-- Endpoints will be populated by JavaScript -->
+            </div>
+
+            <div class="content-area" id="contentArea">
+                <div class="endpoint-details">
+                    <h2>Welcome to Nexus AA API Tester</h2>
+                    <p>Select an endpoint from the left sidebar to test it.</p>
+                    <p>This interactive tool allows you to test all API endpoints without writing code.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Global state
+        let sessionToken = null;
+        let eoaAddress = null;
+        let accountAddress = null;
+        let apiBaseUrl = 'http://localhost:8000';
+        let testNetwork = 'sepolia';
+
+        // API endpoints configuration
+        const endpoints = {
+            'Health & Config': [
+                {
+                    name: 'Health Check',
+                    method: 'GET',
+                    path: '/health',
+                    description: 'Check if the API server is running and healthy',
+                    requiresAuth: false,
+                    params: []
+                },
+                {
+                    name: 'List Networks',
+                    method: 'GET',
+                    path: '/api/v1/chain/networks',
+                    description: 'List all configured blockchain networks',
+                    requiresAuth: false,
+                    params: []
+                }
+            ],
+            'Authentication': [
+                {
+                    name: 'Auth Status',
+                    method: 'GET',
+                    path: '/api/v1/chain/auth/status',
+                    description: 'Check wallet initialization and unlock status',
+                    requiresAuth: false,
+                    params: []
+                },
+                {
+                    name: 'Create Wallet',
+                    method: 'POST',
+                    path: '/api/v1/chain/init/create',
+                    description: 'Create a new wallet with a new private key',
+                    requiresAuth: false,
+                    params: [
+                        { name: 'password', type: 'text', required: true, description: 'Password to encrypt keystore' }
+                    ]
+                },
+                {
+                    name: 'Import Private Key',
+                    method: 'POST',
+                    path: '/api/v1/chain/init/import-private-key',
+                    description: 'Import wallet from private key',
+                    requiresAuth: false,
+                    params: [
+                        { name: 'private_key', type: 'text', required: true, description: 'Private key hex string' },
+                        { name: 'password', type: 'text', required: true, description: 'Password to encrypt keystore' }
+                    ]
+                },
+                {
+                    name: 'Unlock Wallet',
+                    method: 'POST',
+                    path: '/api/v1/chain/auth/unlock',
+                    description: 'Unlock wallet and create session',
+                    requiresAuth: false,
+                    params: [
+                        { name: 'password', type: 'text', required: true, description: 'Wallet password' }
+                    ]
+                },
+                {
+                    name: 'Lock Wallet',
+                    method: 'POST',
+                    path: '/api/v1/chain/auth/lock',
+                    description: 'Lock wallet and destroy session',
+                    requiresAuth: true,
+                    params: []
+                },
+                {
+                    name: 'Session Info',
+                    method: 'GET',
+                    path: '/api/v1/chain/auth/session-info',
+                    description: 'Get current session information',
+                    requiresAuth: true,
+                    params: []
+                }
+            ],
+            'Account Management': [
+                {
+                    name: 'Create Account',
+                    method: 'POST',
+                    path: '/api/v1/chain/accounts',
+                    description: 'Create new smart contract account',
+                    requiresAuth: true,
+                    params: [
+                        { name: 'network_name', type: 'text', required: true, description: 'Network name (e.g., sepolia)', useTestNetwork: true },
+                        { name: 'owners', type: 'json', required: false, description: 'Array of owner addresses (uses EOA if empty)', useEoaAddress: true },
+                        { name: 'threshold', type: 'number', required: true, description: 'Signature threshold', default: 1 },
+                        { name: 'guardians', type: 'json', required: false, description: 'Array of guardian addresses' },
+                        { name: 'guardian_threshold', type: 'number', required: false, description: 'Guardian threshold', default: 0 },
+                        { name: 'salt', type: 'number', required: false, description: 'Salt for CREATE2', default: 0 }
+                    ]
+                },
+                {
+                    name: 'List Accounts',
+                    method: 'GET',
+                    path: '/api/v1/chain/accounts',
+                    description: 'List all accounts in wallet',
+                    requiresAuth: true,
+                    params: []
+                },
+                {
+                    name: 'Get Account Details',
+                    method: 'GET',
+                    path: '/api/v1/chain/accounts/{network_name}/{account_address}',
+                    description: 'Get detailed information about a specific account',
+                    requiresAuth: true,
+                    params: [
+                        { name: 'network_name', type: 'path', required: true, description: 'Network name', useTestNetwork: true },
+                        { name: 'account_address', type: 'path', required: true, description: 'Account address', useAccountAddress: true }
+                    ]
+                },
+                {
+                    name: 'Remove Account',
+                    method: 'DELETE',
+                    path: '/api/v1/chain/accounts',
+                    description: 'Remove account from wallet',
+                    requiresAuth: true,
+                    params: [
+                        { name: 'network_name', type: 'text', required: true, description: 'Network name', useTestNetwork: true },
+                        { name: 'account_address', type: 'text', required: true, description: 'Account address', useAccountAddress: true }
+                    ]
+                }
+            ],
+            'Transactions': [
+                {
+                    name: 'Send UserOperation',
+                    method: 'POST',
+                    path: '/api/v1/chain/userop/send',
+                    description: 'Send UserOperation (auto-routes to bundler or aggregator)',
+                    requiresAuth: true,
+                    params: [
+                        { name: 'network_name', type: 'text', required: true, description: 'Network name', useTestNetwork: true },
+                        { name: 'account_address', type: 'text', required: true, description: 'Smart account address', useAccountAddress: true },
+                        { name: 'target', type: 'text', required: true, description: 'Target address' },
+                        { name: 'value', type: 'number', required: true, description: 'ETH value in wei', default: 0 },
+                        { name: 'data', type: 'text', required: false, description: 'Call data (hex)', default: '0x' }
+                    ]
+                },
+                {
+                    name: 'Send EOA Transaction',
+                    method: 'POST',
+                    path: '/api/v1/chain/transaction/send',
+                    description: 'Send regular Ethereum transaction',
+                    requiresAuth: true,
+                    params: [
+                        { name: 'network_name', type: 'text', required: true, description: 'Network name', useTestNetwork: true },
+                        { name: 'to', type: 'text', required: true, description: 'Recipient address' },
+                        { name: 'value', type: 'number', required: true, description: 'ETH value in wei', default: 0 },
+                        { name: 'data', type: 'text', required: false, description: 'Transaction data (hex)', default: '0x' },
+                        { name: 'gas', type: 'number', required: false, description: 'Gas limit' }
+                    ]
+                },
+                {
+                    name: 'Sign Message',
+                    method: 'POST',
+                    path: '/api/v1/chain/message/sign',
+                    description: 'Sign a message with EOA private key',
+                    requiresAuth: true,
+                    params: [
+                        { name: 'message', type: 'text', required: true, description: 'Message to sign', default: 'Hello, Nexus AA!' }
+                    ]
+                }
+            ],
+            'Queries': [
+                {
+                    name: 'Get Balance',
+                    method: 'GET',
+                    path: '/api/v1/chain/balance/{network_name}/{address}',
+                    description: 'Get ETH balance of any address',
+                    requiresAuth: true,
+                    params: [
+                        { name: 'network_name', type: 'path', required: true, description: 'Network name', useTestNetwork: true },
+                        { name: 'address', type: 'path', required: true, description: 'Address to query', useAccountAddress: true }
+                    ]
+                },
+                {
+                    name: 'Get Nonce',
+                    method: 'GET',
+                    path: '/api/v1/chain/nonce/{network_name}/{account_address}',
+                    description: 'Get nonce for smart account',
+                    requiresAuth: true,
+                    params: [
+                        { name: 'network_name', type: 'path', required: true, description: 'Network name', useTestNetwork: true },
+                        { name: 'account_address', type: 'path', required: true, description: 'Account address', useAccountAddress: true }
+                    ]
+                },
+                {
+                    name: 'Wallet Summary',
+                    method: 'GET',
+                    path: '/api/v1/chain/wallet/summary',
+                    description: 'Get complete wallet summary',
+                    requiresAuth: true,
+                    params: []
+                }
+            ]
+        };
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', () => {
+            loadConfig();
+            renderSidebar();
+            updateSavedData();
+        });
+
+        function loadConfig() {
+            apiBaseUrl = document.getElementById('apiBaseUrl').value;
+            testNetwork = document.getElementById('testNetwork').value;
+
+            document.getElementById('apiBaseUrl').addEventListener('change', (e) => {
+                apiBaseUrl = e.target.value;
+            });
+
+            document.getElementById('testNetwork').addEventListener('change', (e) => {
+                testNetwork = e.target.value;
+            });
+        }
+
+        function renderSidebar() {
+            const sidebar = document.getElementById('sidebar');
+            sidebar.innerHTML = '';
+
+            for (const [groupName, groupEndpoints] of Object.entries(endpoints)) {
+                const groupDiv = document.createElement('div');
+                groupDiv.className = 'endpoint-group';
+
+                const groupTitle = document.createElement('div');
+                groupTitle.className = 'endpoint-group-title';
+                groupTitle.textContent = groupName;
+                groupDiv.appendChild(groupTitle);
+
+                groupEndpoints.forEach(endpoint => {
+                    const item = document.createElement('div');
+                    item.className = 'endpoint-item';
+                    item.innerHTML = `
+                        <span class="endpoint-method method-${endpoint.method.toLowerCase()}">${endpoint.method}</span>
+                        ${endpoint.name}
+                    `;
+                    item.onclick = () => showEndpoint(endpoint);
+                    groupDiv.appendChild(item);
+                });
+
+                sidebar.appendChild(groupDiv);
+            }
+        }
+
+        function showEndpoint(endpoint) {
+            // Update active state
+            document.querySelectorAll('.endpoint-item').forEach(item => {
+                item.classList.remove('active');
+            });
+            event.target.closest('.endpoint-item').classList.add('active');
+
+            // Render endpoint details
+            const contentArea = document.getElementById('contentArea');
+            let html = `
+                <div class="endpoint-details">
+                    <h2>
+                        <span class="endpoint-method method-${endpoint.method.toLowerCase()}">${endpoint.method}</span>
+                        ${endpoint.name}
+                    </h2>
+                    <p>${endpoint.description}</p>
+                    <p><strong>Path:</strong> <code>${endpoint.path}</code></p>
+                    ${endpoint.requiresAuth ? '<p><strong>⚠️ Requires Authentication</strong></p>' : ''}
+            `;
+
+            if (endpoint.params.length > 0) {
+                html += '<form id="endpointForm">';
+                endpoint.params.forEach(param => {
+                    let value = param.default || '';
+
+                    if (param.useTestNetwork) {
+                        value = testNetwork;
+                    } else if (param.useEoaAddress && eoaAddress) {
+                        value = param.type === 'json' ? JSON.stringify([eoaAddress]) : eoaAddress;
+                    } else if (param.useAccountAddress && accountAddress) {
+                        value = accountAddress;
+                    }
+
+                    html += `
+                        <div class="form-group">
+                            <label>${param.name} ${param.required ? '*' : ''}</label>
+                            ${param.type === 'json' || param.type === 'textarea'
+                                ? `<textarea name="${param.name}" ${param.required ? 'required' : ''}>${value}</textarea>`
+                                : `<input type="${param.type === 'path' ? 'text' : param.type}" name="${param.name}" value="${value}" ${param.required ? 'required' : ''}>`
+                            }
+                            <small>${param.description}</small>
+                        </div>
+                    `;
+                });
+                html += '</form>';
+            }
+
+            html += `
+                <div class="button-group">
+                    <button class="btn btn-primary" onclick="executeEndpoint(${JSON.stringify(endpoint).replace(/"/g, '&quot;')})">
+                        Execute Request
+                    </button>
+                </div>
+                <div class="response-section" id="responseSection" style="display: none;">
+                    <h3>Response</h3>
+                    <div class="response-box" id="responseBox"></div>
+                </div>
+            `;
+
+            contentArea.innerHTML = html;
+        }
+
+        async function executeEndpoint(endpoint) {
+            const responseSection = document.getElementById('responseSection');
+            const responseBox = document.getElementById('responseBox');
+
+            responseSection.style.display = 'block';
+            responseBox.className = 'response-box';
+            responseBox.textContent = 'Loading...';
+
+            try {
+                // Build request
+                let url = apiBaseUrl + endpoint.path;
+                let body = null;
+                const headers = {
+                    'Content-Type': 'application/json'
+                };
+
+                if (endpoint.requiresAuth && sessionToken) {
+                    headers['X-Session-Token'] = sessionToken;
+                }
+
+                // Get form data
+                const form = document.getElementById('endpointForm');
+                if (form) {
+                    const formData = new FormData(form);
+                    const data = {};
+
+                    for (const [key, value] of formData.entries()) {
+                        const param = endpoint.params.find(p => p.name === key);
+
+                        if (param.type === 'path') {
+                            url = url.replace(`{${key}}`, value);
+                        } else if (param.type === 'json') {
+                            try {
+                                data[key] = value ? JSON.parse(value) : null;
+                            } catch (e) {
+                                data[key] = value;
+                            }
+                        } else if (param.type === 'number') {
+                            data[key] = value ? parseInt(value) : null;
+                        } else {
+                            data[key] = value;
+                        }
+                    }
+
+                    if (endpoint.method === 'POST' || endpoint.method === 'DELETE') {
+                        body = JSON.stringify(data);
+                    }
+                }
+
+                // Execute request
+                const response = await fetch(url, {
+                    method: endpoint.method,
+                    headers: headers,
+                    body: body
+                });
+
+                const responseData = await response.json();
+
+                // Display response
+                if (response.ok) {
+                    responseBox.className = 'response-box success';
+                    responseBox.textContent = JSON.stringify(responseData, null, 2);
+
+                    // Save important data
+                    if (responseData.session_token) {
+                        sessionToken = responseData.session_token;
+                    }
+                    if (responseData.eoa_address) {
+                        eoaAddress = responseData.eoa_address;
+                    }
+                    if (responseData.account_address) {
+                        accountAddress = responseData.account_address;
+                    }
+
+                    updateSavedData();
+                } else {
+                    responseBox.className = 'response-box error';
+                    responseBox.textContent = `Error ${response.status}:\n${JSON.stringify(responseData, null, 2)}`;
+                }
+            } catch (error) {
+                responseBox.className = 'response-box error';
+                responseBox.textContent = `Request failed:\n${error.message}`;
+            }
+        }
+
+        async function checkHealth() {
+            const statusBar = document.getElementById('statusBar');
+            const statusText = document.getElementById('statusText');
+
+            statusText.textContent = 'Checking...';
+            statusBar.className = 'status-bar';
+
+            try {
+                const response = await fetch(`${apiBaseUrl}/health`);
+                const data = await response.json();
+
+                if (response.ok && data.status === 'healthy') {
+                    statusBar.className = 'status-bar connected';
+                    statusText.textContent = `✓ Connected - Database: ${data.database}, Redis: ${data.redis}`;
+                } else {
+                    statusBar.className = 'status-bar error';
+                    statusText.textContent = '✗ Service unhealthy';
+                }
+            } catch (error) {
+                statusBar.className = 'status-bar error';
+                statusText.textContent = `✗ Connection failed: ${error.message}`;
+            }
+        }
+
+        function updateSavedData() {
+            const savedDataDiv = document.getElementById('savedData');
+
+            if (sessionToken || eoaAddress || accountAddress) {
+                savedDataDiv.style.display = 'block';
+                document.getElementById('savedSessionToken').textContent = sessionToken ? sessionToken.substring(0, 20) + '...' : '-';
+                document.getElementById('savedEoaAddress').textContent = eoaAddress || '-';
+                document.getElementById('savedAccountAddress').textContent = accountAddress || '-';
+            } else {
+                savedDataDiv.style.display = 'none';
+            }
+        }
+    </script>
+</body>
+</html>

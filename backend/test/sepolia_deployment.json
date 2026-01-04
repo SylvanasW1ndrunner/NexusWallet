@@ -1,0 +1,18 @@
+{
+  "network": "sepolia",
+  "chainId": 11155111,
+  "deployer": "0xf5103fC80db8b82e3d922bd6dB81dE1Fe024f540",
+  "entryPoint": "0x0000000071727De22E5E9d8BAf0edAc6f37da032",
+  "factory": "0xb69329f42D9662D94FC88D5d4fcAcA3cD867c9d5",
+  "testAccount": {
+    "address": "0x52101F8d196c8103005F4ed9410E3f8A52E179D1",
+    "owners": [
+      "0xf5103fC80db8b82e3d922bd6dB81dE1Fe024f540"
+    ],
+    "threshold": 1,
+    "guardians": [],
+    "guardianThreshold": 0,
+    "salt": 0
+  },
+  "timestamp": "2025-12-11T07:56:30.728Z"
+}
